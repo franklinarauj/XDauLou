@@ -6,7 +6,24 @@ import { $, apiError, escapeHtml, formatBytes, formatSeconds, saveBlob } from '.
 const MAX_SECONDS = 10;
 const DEFAULT_SECONDS = 6;
 
-const defaultOptions = () => ({ fit: 'contain', start: 0, duration: DEFAULT_SECONDS, removeBg: false, tolerance: 0.25 });
+// GIF é o padrão: no WhatsApp do celular, "Criar figurinha" com um GIF é o caminho
+// que mantém a animação. No WhatsApp Web/Desktop a figurinha sempre fica parada.
+const defaultOptions = () => ({ format: 'gif', fit: 'contain', start: 0, duration: DEFAULT_SECONDS, removeBg: false, tolerance: 0.25 });
+
+const FORMAT_NOTE = {
+  gif: 'Para criar a figurinha no WhatsApp do celular, onde ela fica animada.',
+  webp: 'Formato final de figurinha, para apps de pacotes no Android. No WhatsApp Web e no Desktop, figurinhas criadas no computador ficam paradas.',
+};
+
+const HOWTO = {
+  gif: `<strong>Como usar:</strong> coloque o GIF na galeria do celular (abrindo esta página no celular, toque e segure a prévia e escolha
+    salvar ou adicionar às Fotos). No WhatsApp do celular, abra uma conversa, toque em figurinhas, depois em <strong>Criar figurinha</strong>,
+    e escolha o GIF. Depois de enviar, toque nela e favorite.`,
+  webp: `<strong>Como usar:</strong> importe o .webp num app de pacotes de figurinhas no Android (o WhatsApp exige pelo menos 3 por pacote).
+    Pelo computador o WhatsApp só cria figurinhas paradas.`,
+};
+
+const fileName = (source, format) => source.filename.replace(/\.webp$/, `.${format}`);
 
 /** Menor variante que ainda cobre 512 px no lado menor (baixa menos e não perde nitidez). */
 function variantForSticker(media) {
@@ -130,7 +147,11 @@ export function createStudio({ root, getFeatures }) {
   function resultHtml() {
     const r = st.result;
     if (!r) {
-      return '<p class="note" id="st-status">A figurinha sai em 512 × 512 px, com fundo transparente, até 10 s e menos de 500 KB.</p>';
+      return '<p class="note" id="st-status">Sai em 512 × 512 px, com fundo transparente e até 10 s.</p>';
+    }
+    if (r.format === 'gif') {
+      return `<p class="sticker-size">${formatBytes(r.bytes)}</p>
+        <p class="note" id="st-status">${st.stale ? 'As opções mudaram. Gere de novo para atualizar.' : 'GIF animado pronto para o Criar figurinha do WhatsApp no celular.'}</p>`;
     }
     const limit = r.animated ? 500 : 100;
     const ok = r.bytes <= limit * 1024;
@@ -177,6 +198,14 @@ export function createStudio({ root, getFeatures }) {
   function optionsHtml() {
     const o = st.options;
     return `<fieldset class="group">
+        <legend>Formato do arquivo</legend>
+        <div class="segmented">
+          <label><input type="radio" name="st-format" value="gif" ${o.format === 'gif' ? 'checked' : ''}>GIF para o celular</label>
+          <label><input type="radio" name="st-format" value="webp" ${o.format === 'webp' ? 'checked' : ''}>WebP</label>
+        </div>
+        <p class="note" id="st-format-note">${FORMAT_NOTE[o.format]}</p>
+      </fieldset>
+      <fieldset class="group">
         <legend>Enquadramento</legend>
         <div class="segmented">
           <label><input type="radio" name="st-fit" value="contain" ${o.fit === 'contain' ? 'checked' : ''}>Ajustar</label>
@@ -215,8 +244,7 @@ export function createStudio({ root, getFeatures }) {
         ${optionsHtml()}
         <p class="inline-error" id="st-error" role="alert" ${st.error ? '' : 'hidden'}>${escapeHtml(st.error ?? '')}</p>
         <button type="button" class="download" id="st-action"></button>
-        <p class="note howto">No WhatsApp Web, abra uma conversa (pode ser com você mesmo), clique no clipe, escolha
-          <strong>Figurinha</strong> e selecione o arquivo .webp. Depois, no celular, toque na figurinha e favorite.</p>
+        <p class="note howto" id="st-howto">${HOWTO[st.options.format]}</p>
       </article>`;
     refresh();
   }
@@ -237,7 +265,8 @@ export function createStudio({ root, getFeatures }) {
       btn.removeAttribute('aria-busy');
       btn.classList.remove('is-indeterminate');
       btn.dataset.action = fresh ? 'st-download' : 'st-generate';
-      btn.textContent = fresh ? `Baixar figurinha (${formatBytes(st.result.bytes)})` : st.result ? 'Gerar de novo' : 'Gerar figurinha';
+      const label = st.result?.format === 'gif' ? 'Baixar GIF' : 'Baixar figurinha';
+      btn.textContent = fresh ? `${label} (${formatBytes(st.result.bytes)})` : st.result ? 'Gerar de novo' : 'Gerar figurinha';
     }
     const status = $('#st-status', root);
     if (status && st.result && st.stale) status.textContent = 'As opções mudaram. Gere de novo para atualizar.';
@@ -261,6 +290,7 @@ export function createStudio({ root, getFeatures }) {
     }
 
     const qs = new URLSearchParams({
+      format: o.format,
       fit: o.fit,
       start: String(o.start),
       duration: String(Math.min(o.duration, maxDuration())),
@@ -293,6 +323,7 @@ export function createStudio({ root, getFeatures }) {
         fps: res.headers.get('X-Sticker-Fps'),
         quality: res.headers.get('X-Sticker-Quality'),
         animated: res.headers.get('X-Sticker-Animated') !== '0',
+        format: res.headers.get('X-Sticker-Format') === 'gif' ? 'gif' : 'webp',
       };
       st.busy = null;
       render();
@@ -309,9 +340,10 @@ export function createStudio({ root, getFeatures }) {
 
   function download() {
     if (!st.result) return;
-    saveBlob(st.result.blob, st.source.filename);
+    const name = fileName(st.source, st.result.format);
+    saveBlob(st.result.blob, name);
     const status = $('#st-status', root);
-    if (status) status.textContent = `Download concluído: ${st.source.filename}`;
+    if (status) status.textContent = `Download concluído: ${name}`;
   }
 
   function markStale() {
@@ -346,6 +378,10 @@ export function createStudio({ root, getFeatures }) {
       o.fit = el.value;
       $('#st-fit-note', root).textContent =
         o.fit === 'contain' ? 'Mostra a imagem inteira; a sobra fica transparente.' : 'Ocupa o quadrado inteiro, cortando as bordas.';
+    } else if (el.name === 'st-format') {
+      o.format = el.value;
+      $('#st-format-note', root).textContent = FORMAT_NOTE[o.format];
+      $('#st-howto', root).innerHTML = HOWTO[o.format];
     } else if (el.name === 'st-removebg') {
       o.removeBg = el.checked;
       $('#st-tolerance-wrap', root).hidden = !o.removeBg;

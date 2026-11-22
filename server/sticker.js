@@ -24,6 +24,15 @@ export const LEVELS = [
   { fps: 10, inner: 448 },
   { fps: 8, inner: 400 },
 ];
+// GIF para o "Criar figurinha" do WhatsApp no celular: é o único caminho que
+// mantém a figurinha animada (no WhatsApp Web/Desktop ela sempre fica parada).
+export const GIF_LEVELS = [
+  { fps: 15, inner: 512 },
+  { fps: 12, inner: 512 },
+  { fps: 10, inner: 448 },
+  { fps: 10, inner: 384 },
+  { fps: 8, inner: 320 },
+];
 const Q_MAX = 80;
 const Q_MIN = 30;
 // No teste com vídeo detalhado, q=30 rendeu ~62% do tamanho de q=80.
@@ -43,6 +52,7 @@ export function parseOptions(q = {}) {
     fit: q.fit === 'cover' ? 'cover' : 'contain',
     removeBg: q.removeBg === '1' || q.removeBg === 'true',
     tolerance: clamp(num(q.tolerance, 0.25), 0.01, 0.6),
+    format: q.format === 'gif' ? 'gif' : 'webp',
   };
 }
 
@@ -56,7 +66,7 @@ export function detectFormat(buf) {
   return null;
 }
 
-export function stickerFilter({ fps, inner, fit, key, tolerance }) {
+export function stickerFilter({ fps, inner, fit, key, tolerance, canvas }) {
   const chain = [`fps=${fps}`, 'format=rgba'];
   if (key) chain.push(`colorkey=0x${key}:${tolerance}:0.08`);
   if (fit === 'cover') {
@@ -65,8 +75,18 @@ export function stickerFilter({ fps, inner, fit, key, tolerance }) {
     chain.push(`scale=${inner}:${inner}:force_original_aspect_ratio=decrease:flags=lanczos`);
   }
   // Sobra preenchida com transparência total: nada de borda branca.
-  chain.push(`pad=${CANVAS}:${CANVAS}:(ow-iw)/2:(oh-ih)/2:color=0x00000000`);
+  const size = canvas ?? CANVAS;
+  chain.push(`pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=0x00000000`);
   return chain.join(',');
+}
+
+/** Mesmo enquadramento da figurinha, mas em GIF com paleta otimizada e transparência. */
+export function stickerGifFilter(opts) {
+  return (
+    `${stickerFilter({ ...opts, canvas: opts.inner })},split[a][b];` +
+    '[a]palettegen=reserve_transparent=1:stats_mode=diff:max_colors=255[p];' +
+    '[b][p]paletteuse=alpha_threshold=128:dither=bayer:bayer_scale=4:diff_mode=rectangle'
+  );
 }
 
 /** Argumentos de entrada: GIF não tem busca rápida, então o corte vai depois do -i. */
@@ -154,10 +174,38 @@ export function createStickerService({ ffmpegPath, webpSupported, fetchImpl, tim
   const available = Boolean(ffmpegPath && webpSupported);
   const target = sticker.targetKb * 1024;
 
+  /** GIF: desce degraus (fps e tamanho) até caber em gifMaxMb. */
+  async function encodeGif({ input, format, options, signal, key, tmp }) {
+    const limit = sticker.gifMaxMb * 1024 * 1024;
+    let last;
+    for (const [n, level] of GIF_LEVELS.entries()) {
+      const out = tmp.file(`out-${n}.gif`);
+      await runFfmpeg(
+        ffmpegPath,
+        [
+          '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+          ...inputArgs(input, format, options),
+          '-an',
+          '-filter_complex', stickerGifFilter({ ...level, fit: options.fit, key, tolerance: options.tolerance }),
+          '-loop', '0',
+          '-fs', String(limit * 3),
+          out,
+        ],
+        { timeoutMs: sticker.timeoutMs, signal },
+      );
+      const size = (await stat(out)).size;
+      last = { out, size, best: { ...level, q: null }, attempts: n + 1 };
+      if (size <= limit) break;
+    }
+    if (last.size > limit) throw new AppError('STICKER_TOO_LARGE');
+    return { buffer: await readFile(last.out), best: last.best, attempts: last.attempts, animated: true };
+  }
+
   async function encode({ input, format, options, signal }) {
     const tmp = await makeTempDir();
     try {
       const key = options.removeBg ? await cornerColor(ffmpegPath, input, format, options, signal) : null;
+      if (options.format === 'gif') return await encodeGif({ input, format, options, signal, key, tmp });
       const outputs = [];
       const attempt = async (level, q) => {
         const out = tmp.file(`out-${outputs.length}.webp`);
@@ -248,12 +296,14 @@ export function createStickerService({ ffmpegPath, webpSupported, fetchImpl, tim
         }
 
         res.status(200);
-        res.setHeader('Content-Type', 'image/webp');
+        const ext = options.format === 'gif' ? 'gif' : 'webp';
+        res.setHeader('Content-Type', `image/${ext}`);
         res.setHeader('Content-Length', String(result.buffer.length));
-        res.setHeader('Content-Disposition', attachment(safeFilename(req.query.name, 'webp')));
+        res.setHeader('Content-Disposition', attachment(safeFilename(req.query.name, ext)));
+        res.setHeader('X-Sticker-Format', ext);
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('X-Sticker-Fps', String(result.best.fps));
-        res.setHeader('X-Sticker-Quality', String(result.best.q));
+        res.setHeader('X-Sticker-Quality', String(result.best.q ?? ''));
         res.setHeader('X-Sticker-Inner', String(result.best.inner));
         res.setHeader('X-Sticker-Attempts', String(result.attempts));
         res.setHeader('X-Sticker-Animated', result.animated ? '1' : '0');

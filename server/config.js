@@ -39,6 +39,7 @@ export function loadConfig(overrides = {}) {
     maxConcurrentJobs: int('MAX_CONCURRENT_JOBS', int('GIF_MAX_CONCURRENT', 2)),
     sticker: {
       targetKb: Math.min(int('STICKER_TARGET_KB', 480), 500),
+      gifMaxMb: int('STICKER_GIF_MAX_MB', 4),
       maxInputMb: int('STICKER_MAX_INPUT_MB', 80),
       maxUploadMb: int('STICKER_MAX_UPLOAD_MB', 15),
       timeoutMs: int('STICKER_TIMEOUT_MS', 60_000),

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -132,7 +132,8 @@ const upload = (file, query = '', type = 'image/gif') =>
 
 test('opções são limitadas aos valores permitidos', () => {
   const o = parseOptions({ start: '-5', duration: '99', fit: 'x', removeBg: '1', tolerance: '9' });
-  assert.deepEqual(o, { start: 0, duration: 10, fit: 'contain', removeBg: true, tolerance: 0.6 });
+  assert.deepEqual(o, { start: 0, duration: 10, fit: 'contain', removeBg: true, tolerance: 0.6, format: 'webp' });
+  assert.equal(parseOptions({ format: 'gif' }).format, 'gif');
   assert.equal(parseOptions({ fit: 'cover' }).fit, 'cover');
 });
 
@@ -194,6 +195,30 @@ test('GIF enviado vira figurinha válida para o WhatsApp', { skip }, async () =>
   assert.equal(info.loop, 0, 'loop infinito');
   assert.ok(info.alphaFlag && info.alphaFrames > 0, 'com canal alfa');
   assert.ok(buf.length < 500 * 1024);
+});
+
+test('formato GIF (para o "Criar figurinha" do celular): 512×512, animado e com transparência', { skip }, async () => {
+  const res = await upload(clips.gif, 'format=gif&name=teste');
+  assert.equal(res.status, 200, await res.clone().text());
+  assert.equal(res.headers.get('content-type'), 'image/gif');
+  assert.equal(res.headers.get('x-sticker-format'), 'gif');
+  assert.equal(res.headers.get('content-disposition'), 'attachment; filename="teste.gif"');
+  const buf = Buffer.from(await res.arrayBuffer());
+  assert.equal(buf.subarray(0, 6).toString('latin1'), 'GIF89a');
+  assert.equal(buf.readUInt16LE(6), 512);
+  assert.equal(buf.readUInt16LE(8), 512);
+
+  const dir = mkdtempSync(join(tmpdir(), 'xdaulou-gif-'));
+  const file = join(dir, 'out.gif');
+  writeFileSync(file, buf);
+  // framecrc imprime uma linha por quadro decodificado.
+  const crc = spawnSync(ffmpegPath, ['-v', 'error', '-i', file, '-f', 'framecrc', '-'], { encoding: 'utf8' });
+  assert.equal(crc.status, 0);
+  const frames = crc.stdout.split('\n').filter((l) => l && !l.startsWith('#')).length;
+  assert.ok(frames > 1, `quadros: ${frames}`);
+  const rgba = firstFrameRgba(file, 'format=rgba');
+  assert.equal(pixel(rgba, 0, 0)[3], 0, 'canto transparente');
+  assert.equal(pixel(rgba, 256, 256)[3], 255, 'centro opaco');
 });
 
 test('GIF parado vira figurinha estática abaixo de 100 KB', { skip, timeout: 60_000 }, async () => {

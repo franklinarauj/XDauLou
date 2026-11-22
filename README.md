@@ -25,7 +25,7 @@
 - **Posts com vários vídeos.** Seletor de mídia; links `/video/2` já abrem a segunda.
 - **Post citado.** Se o post só cita outro post com vídeo, oferece o vídeo citado.
 - **Mobile-first, tema claro e escuro** seguindo o sistema operacional.
-- **Figurinhas do WhatsApp.** No modo *Criar figurinha*, a mídia de um post (ou um GIF/vídeo seu) vira WebP animado 512×512 com fundo transparente, até 10 s e abaixo de 500 KB. Veja [Figurinhas](#figurinhas-do-whatsapp).
+- **Figurinhas do WhatsApp.** No modo *Criar figurinha*, a mídia de um post (ou um GIF/vídeo seu) vira um GIF 512×512 pronto para o *Criar figurinha* do WhatsApp no celular, ou um WebP animado no formato final de figurinha. Veja [Figurinhas](#figurinhas-do-whatsapp).
 - **Compartilhar direto para o app** (Android, quando instalado como PWA) ou abrir `/?url=<link>`.
 
 ## Figurinhas do WhatsApp
@@ -34,13 +34,24 @@ Escolha **Criar figurinha** no card da esquerda (ou toque em *Transformar em fig
 
 | Opção | O que faz |
 |---|---|
+| Formato | **GIF para o celular** (padrão) ou **WebP** (formato final de figurinha) |
 | Enquadramento | **Ajustar** mostra a imagem inteira e deixa a sobra transparente; **Preencher** ocupa o quadrado cortando as bordas |
 | Trecho | Começo e duração (até 10 s). O WhatsApp encerra a animação no primeiro quadro, então vale escolher um começo que funcione como imagem |
 | Remover fundo sólido | Torna transparente a cor do canto da imagem, com tolerância ajustável |
 
-O resultado segue as regras do WhatsApp para figurinhas animadas: WebP 512×512, transparência real (nunca borda branca), loop infinito, até 10 s e no máximo 500 KB. Se o primeiro resultado passar do limite, o servidor comprime sozinho, nesta ordem: reduz a qualidade (de 80 até 30), depois os quadros por segundo (15 → 12 → 10 → 8) e por fim a escala dentro da tela de 512 px. Um conteúdo parado (todos os quadros iguais) vira figurinha estática, que tem limite de 100 KB, e o servidor também respeita isso.
+### Como colocar no WhatsApp
 
-Para usar: no WhatsApp Web, abra uma conversa (pode ser com você mesmo), clique no clipe › **Figurinha** e escolha o `.webp`. No celular, toque na figurinha recebida e favorite.
+O WhatsApp só cria figurinhas **animadas** pelo celular. No WhatsApp Web e no Desktop, toda figurinha criada no computador fica parada, mesmo a partir de um GIF ou WebP animado (anexando, arrastando ou usando o criador de figurinhas).
+
+1. Gere no formato **GIF para o celular** e coloque o GIF na galeria do celular. O jeito mais simples é abrir o XDauLou no próprio celular (na mesma rede Wi-Fi, use `http://<IP-do-computador>:3000`), gerar, tocar e segurar a prévia e escolher salvar ou *Adicionar às Fotos*.
+2. No WhatsApp do celular, abra uma conversa, toque no ícone de figurinhas › **Criar figurinha** e escolha o GIF. Ela continua animada.
+3. Envie, toque na figurinha e favorite.
+
+O **WebP** sai no formato final das figurinhas, para importar em apps de pacotes no Android (o WhatsApp exige pelo menos 3 figurinhas por pacote).
+
+### Regras técnicas
+
+O WebP segue as regras do WhatsApp para figurinhas animadas: 512×512, transparência real (nunca borda branca), loop infinito, até 10 s e no máximo 500 KB. Se o primeiro resultado passar do limite, o servidor comprime sozinho, nesta ordem: reduz a qualidade (de 80 até 30), depois os quadros por segundo (15 → 12 → 10 → 8) e por fim a escala dentro da tela de 512 px. Um conteúdo parado (todos os quadros iguais) vira figurinha estática, que tem limite de 100 KB, e o servidor também respeita isso. O GIF usa paleta otimizada com transparência e fica abaixo de 4 MB, reduzindo fps e tamanho se preciso.
 
 ## Privacidade
 
@@ -114,7 +125,8 @@ Copie `.env.example` para `.env`. Todas as variáveis são opcionais.
 | `GIF_MAX_OUTPUT_MB` | `40` | Tamanho máximo do GIF gerado |
 | `MAX_CONCURRENT_JOBS` | `2` | Conversões simultâneas (GIF e figurinha somados) |
 | `STICKER_MAX_UPLOAD_MB` | `15` | Tamanho máximo do arquivo enviado para virar figurinha |
-| `STICKER_TARGET_KB` | `480` | Meta de tamanho da figurinha (o limite do WhatsApp é 500) |
+| `STICKER_TARGET_KB` | `480` | Meta de tamanho da figurinha WebP (o limite do WhatsApp é 500) |
+| `STICKER_GIF_MAX_MB` | `4` | Tamanho máximo do GIF de figurinha |
 | `RATE_LIMIT_STICKER` | `10` | Figurinhas por IP por janela |
 | `FFMPEG_PATH` / `YTDLP_PATH` | automático | Caminho dos binários, se não estiverem no PATH |
 
@@ -126,7 +138,7 @@ Copie `.env.example` para `.env`. Todas as variáveis são opcionais.
 | `GET /api/download` | `src`, `exp`, `sig` (da variante), `name` | MP4 como anexo |
 | `GET /api/gif` | `src`, `exp`, `sig`, `q` (`sd` = 480 px, `hd` = 720 px), `name` | GIF como anexo |
 | `GET /api/thumb` | caminho assinado já devolvido em `thumbnail` e `avatar` | Imagem |
-| `POST /api/sticker` | Corpo: `{ src, exp, sig }` (mídia do X) **ou** o arquivo bruto. Query: `fit` (`contain`/`cover`), `start`, `duration`, `removeBg`, `tolerance`, `name` | Figurinha `.webp`, com `X-Sticker-Fps`, `X-Sticker-Quality` e `X-Sticker-Animated` |
+| `POST /api/sticker` | Corpo: `{ src, exp, sig }` (mídia do X) **ou** o arquivo bruto. Query: `format` (`webp`/`gif`), `fit` (`contain`/`cover`), `start`, `duration`, `removeBg`, `tolerance`, `name` | Figurinha `.webp` ou `.gif`, com `X-Sticker-Format`, `X-Sticker-Fps`, `X-Sticker-Quality` e `X-Sticker-Animated` |
 | `GET /api/health` | | Estado do cache, extratores e ffmpeg |
 
 Erros sempre vêm como `{ "error": { "code", "message" } }`, com mensagens em português (`PRIVATE`, `NOT_FOUND`, `NO_MEDIA`, `RATE_LIMITED`…).
@@ -158,7 +170,7 @@ scripts/demo.js         modo demonstração
 npm test
 ```
 
-São 49 testes cobrindo o parser de links, a normalização das respostas do X (vídeo, GIF, conta privada, conteúdo sensível, só fotos, post citado), o cache, o rate limit, os links assinados, os redirecionamentos, a conversão real de MP4 em GIF e as figurinhas (512×512, transparência nas bordas, remoção de fundo, menos de 500 KB num vídeo pesado, corte em 10 s, figurinha estática abaixo de 100 KB e rejeição de arquivos falsos). Eles rodam automaticamente no GitHub Actions a cada push.
+São 50 testes cobrindo o parser de links, a normalização das respostas do X (vídeo, GIF, conta privada, conteúdo sensível, só fotos, post citado), o cache, o rate limit, os links assinados, os redirecionamentos, a conversão real de MP4 em GIF e as figurinhas (512×512, transparência nas bordas, remoção de fundo, menos de 500 KB num vídeo pesado, corte em 10 s, figurinha estática abaixo de 100 KB, GIF animado com transparência e rejeição de arquivos falsos). Eles rodam automaticamente no GitHub Actions a cada push.
 
 ## Publicação
 

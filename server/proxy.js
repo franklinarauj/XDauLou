@@ -14,7 +14,7 @@ export function safeFilename(name, ext) {
   let base = String(name ?? '')
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
-    .replace(/\.(mp4|gif)$/i, '')
+    .replace(/\.(mp4|gif|webp)$/i, '')
     .replace(/[^\w.-]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^[._-]+|[._-]+$/g, '')
