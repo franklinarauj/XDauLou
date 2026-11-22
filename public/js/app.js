@@ -1,14 +1,24 @@
+import { createStudio, sourceFromFile, sourceFromPost } from './studio.js';
 import { parseTweetUrl } from './tweet-url.js';
+import { $, apiError, escapeHtml, formatBytes, formatDuration, saveBlob } from './util.js';
 
-const $ = (sel, root = document) => root.querySelector(sel);
 const form = $('#search');
 const input = $('#url');
 const pasteBtn = $('#paste');
 const clearBtn = $('#clear');
 const hint = $('#hint');
 const result = $('#result');
+const modeSwitch = $('#mode');
+const lede = $('#lede');
+const dropzone = $('#dropzone');
+const fileInput = $('#file');
+const dropLabel = $('#drop-label');
 
 const DEFAULT_HINT = hint.textContent;
+const LEDE = {
+  download: 'Cole o link de um post do X e baixe o vídeo ou o GIF.',
+  sticker: 'Transforme um vídeo ou GIF do X, ou um arquivo seu, em figurinha animada do WhatsApp.',
+};
 const NATIVE_DOWNLOAD_ABOVE = 250 * 1024 * 1024; // acima disso, deixa o navegador baixar sozinho
 const RETRYABLE = new Set(['UPSTREAM_ERROR', 'UPSTREAM_RATE_LIMITED', 'RATE_LIMITED', 'INTERNAL', 'NETWORK', 'GIF_BUSY']);
 
@@ -27,39 +37,25 @@ const TITLES = {
 };
 
 const state = {
+  mode: 'download',
+  features: { sticker: false, stickerMaxUploadMb: 15 },
   post: null,
+  file: null, // origem "arquivo" do modo figurinha
+  stickerFrom: null, // 'x' | 'file': a última origem escolhida
+  error: null, // último erro de busca, para redesenhar ao trocar de modo
   gif: { available: false, maxDurationSeconds: 60 },
   mediaIndex: 0,
   format: 'mp4',
   variantIndex: 0,
   gifPreset: 'sd',
   lastId: null,
-  lastInput: '',
   request: null,
   download: null,
 };
 
+const studio = createStudio({ root: result, getFeatures: () => state.features });
+
 // Utilidades ------------------------------------------------------------
-
-const escapeHtml = (s) =>
-  String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-
-const numberFmt = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
-
-function formatBytes(bytes) {
-  if (!bytes) return null;
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${numberFmt.format(bytes / (1024 * 1024))} MB`;
-}
-
-function formatDuration(ms) {
-  if (!ms) return null;
-  const total = Math.round(ms / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = String(total % 60).padStart(2, '0');
-  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
-}
 
 // Miniaturas já vêm do servidor como caminhos assinados (/api/thumb?src=...&sig=...).
 const thumbUrl = (signedPath) => escapeHtml(signedPath);
@@ -73,6 +69,47 @@ function setHint(text, isError = false) {
 function updateClear() {
   clearBtn.hidden = input.value.length === 0;
 }
+
+// Modo (baixar mídia / criar figurinha) ---------------------------------------
+
+function setMode(mode) {
+  state.mode = mode === 'sticker' && state.features.sticker ? 'sticker' : 'download';
+  for (const el of modeSwitch.querySelectorAll('input')) el.checked = el.value === state.mode;
+  lede.textContent = LEDE[state.mode];
+  dropzone.hidden = state.mode !== 'sticker';
+  renderPanel();
+}
+
+/** Redesenha o card da direita conforme o modo e a origem atual. */
+function renderPanel() {
+  if (state.request) return; // o esqueleto continua até a busca terminar
+  if (state.error && !(state.mode === 'sticker' && state.stickerFrom === 'file')) {
+    renderError(state.error.code, state.error.message);
+    return;
+  }
+  if (state.mode === 'download') {
+    if (state.post) renderPost();
+    else renderEmpty();
+    return;
+  }
+  const source =
+    state.stickerFrom === 'file' && state.file
+      ? state.file
+      : state.post
+        ? sourceFromPost(state.post, state.mediaIndex)
+        : state.file;
+  if (!source) {
+    studio.clear();
+    renderStickerEmpty();
+  } else if (studio.source && sameSource(studio.source, source)) {
+    studio.render();
+  } else {
+    studio.setSource(source);
+  }
+}
+
+const sameSource = (a, b) =>
+  a.kind === b.kind && (a.kind === 'file' ? a.file === b.file : a.post === b.post && a.mediaIndex === b.mediaIndex);
 
 // Busca -------------------------------------------------------------------
 
@@ -88,6 +125,8 @@ async function search(raw, { force = false } = {}) {
   const controller = new AbortController();
   state.request = controller;
   state.lastId = target.id;
+  state.stickerFrom = 'x';
+  state.error = null;
   setHint(DEFAULT_HINT);
   renderSkeleton();
 
@@ -100,9 +139,15 @@ async function search(raw, { force = false } = {}) {
     });
     const data = await res.json().catch(() => ({}));
     if (controller.signal.aborted) return;
+    state.request = null;
     if (!res.ok) {
       state.lastId = null;
-      renderError(data.error?.code ?? 'INTERNAL', data.error?.message ?? 'Algo deu errado do nosso lado. Tente de novo.');
+      state.post = null;
+      state.error = {
+        code: data.error?.code ?? 'INTERNAL',
+        message: data.error?.message ?? 'Algo deu errado do nosso lado. Tente de novo.',
+      };
+      renderPanel();
       return;
     }
     state.post = data.post;
@@ -110,8 +155,10 @@ async function search(raw, { force = false } = {}) {
     selectMedia(data.selectedIndex ?? 0);
   } catch (err) {
     if (err.name === 'AbortError') return;
+    state.request = null;
     state.lastId = null;
-    renderError('NETWORK', 'Não foi possível falar com o servidor. Verifique sua internet e tente de novo.');
+    state.error = { code: 'NETWORK', message: 'Não foi possível falar com o servidor. Verifique sua internet e tente de novo.' };
+    renderPanel();
   } finally {
     if (state.request === controller) state.request = null;
   }
@@ -123,7 +170,8 @@ function selectMedia(index) {
   state.format = media.type === 'gif' && media.canGif ? 'gif' : 'mp4';
   state.variantIndex = 0;
   state.gifPreset = 'sd';
-  renderPost();
+  if (state.mode === 'sticker') state.stickerFrom = 'x';
+  renderPanel();
 }
 
 const currentMedia = () => state.post.media[state.mediaIndex];
@@ -170,18 +218,27 @@ function downloadTarget() {
 
 // Renderização -------------------------------------------------------------
 
-const EMPTY_HTML = `
-  <div class="empty">
-    <div class="empty-shapes" aria-hidden="true">
-      <span class="empty-square">GIF</span>
-      <span class="empty-rect">Vídeo</span>
-    </div>
-    <p>Cole o link de um post para ver a mídia e escolher a qualidade do download.</p>
-  </div>`;
-
 function renderEmpty() {
   result.setAttribute('aria-busy', 'false');
-  result.innerHTML = EMPTY_HTML;
+  result.innerHTML = `
+    <div class="empty">
+      <div class="empty-shapes" aria-hidden="true">
+        <span class="empty-square">GIF</span>
+        <span class="empty-rect">Vídeo</span>
+      </div>
+      <p>Cole o link de um post para ver a mídia e escolher a qualidade do download.</p>
+    </div>`;
+}
+
+function renderStickerEmpty() {
+  result.setAttribute('aria-busy', 'false');
+  result.innerHTML = `
+    <div class="empty">
+      <div class="empty-shapes" aria-hidden="true">
+        <span class="empty-sticker">512 × 512</span>
+      </div>
+      <p>Cole o link de um post ou envie um arquivo para montar a figurinha.</p>
+    </div>`;
 }
 
 function renderSkeleton() {
@@ -265,14 +322,15 @@ function renderPost() {
           ${post.fromQuote ? '<p class="note">A mídia é do post citado.</p>' : ''}
         </div>
       </div>
-        ${picker}
-        ${formatGroup}
-        <fieldset class="group">
-          <legend>Qualidade</legend>
-          <div class="qualities" id="qualities"></div>
-        </fieldset>
-        <p class="note" id="format-note" hidden></p>
-        <button type="button" class="download" id="download" data-action="download"></button>
+      ${picker}
+      ${formatGroup}
+      <fieldset class="group">
+        <legend>Qualidade</legend>
+        <div class="qualities" id="qualities"></div>
+      </fieldset>
+      <p class="note" id="format-note" hidden></p>
+      <button type="button" class="download" id="download" data-action="download"></button>
+      ${state.features.sticker ? '<button type="button" class="secondary secondary--wide" data-action="to-sticker">Transformar em figurinha</button>' : ''}
     </article>`;
 
   renderQualities();
@@ -335,18 +393,6 @@ function renderButton(override) {
 
 // Download -------------------------------------------------------------------
 
-function saveBlob(blob, filename) {
-  const href = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = href;
-  a.download = filename;
-  a.hidden = true;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(href), 60_000);
-}
-
 function nativeDownload(url, filename) {
   const a = document.createElement('a');
   a.href = url;
@@ -380,12 +426,7 @@ async function startDownload() {
 
   try {
     const res = await fetch(target.url, { signal: controller.signal });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(data.error?.message ?? 'Não foi possível baixar o arquivo. Tente de novo.'), {
-        code: data.error?.code,
-      });
-    }
+    if (!res.ok) throw await apiError(res, 'Não foi possível baixar o arquivo. Tente de novo.');
     const total = Number(res.headers.get('content-length')) || target.size || 0;
     const reader = res.body.getReader();
     const chunks = [];
@@ -422,7 +463,59 @@ async function startDownload() {
   }
 }
 
+// Arquivo do usuário (modo figurinha) ---------------------------------------------
+
+const ACCEPTED = /^(image\/gif|video\/(mp4|quicktime|webm))$/;
+
+async function useFile(file) {
+  if (!file) return;
+  if (!ACCEPTED.test(file.type) && !/\.(gif|mp4|mov|webm|m4v)$/i.test(file.name)) {
+    setHint('Envie um GIF ou um vídeo MP4, MOV ou WebM.', true);
+    return;
+  }
+  const maxMb = state.features.stickerMaxUploadMb;
+  if (file.size > maxMb * 1024 * 1024) {
+    setHint(`O arquivo passa de ${maxMb} MB. Use um arquivo menor.`, true);
+    return;
+  }
+  if (state.file) URL.revokeObjectURL(state.file.previewUrl);
+  state.file = await sourceFromFile(file);
+  state.stickerFrom = 'file';
+  state.error = null;
+  dropLabel.textContent = `${file.name} (${formatBytes(file.size)})`;
+  dropzone.classList.add('has-file');
+  setHint(DEFAULT_HINT);
+  if (state.mode !== 'sticker') setMode('sticker');
+  else renderPanel();
+  // No celular os cards ficam empilhados: leva a pessoa até o estúdio.
+  if (window.matchMedia('(max-width: 56rem)').matches) {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    result.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  }
+}
+
+fileInput.addEventListener('change', () => {
+  useFile(fileInput.files?.[0]);
+  fileInput.value = '';
+});
+
+for (const type of ['dragenter', 'dragover']) {
+  dropzone.addEventListener(type, (e) => {
+    e.preventDefault();
+    dropzone.classList.add('is-dragging');
+  });
+}
+for (const type of ['dragleave', 'drop']) {
+  dropzone.addEventListener(type, (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('is-dragging');
+  });
+}
+dropzone.addEventListener('drop', (e) => useFile(e.dataTransfer?.files?.[0]));
+
 // Eventos ----------------------------------------------------------------------
+
+modeSwitch.addEventListener('change', (e) => setMode(e.target.value));
 
 let debounce;
 input.addEventListener('input', () => {
@@ -472,11 +565,14 @@ pasteBtn.addEventListener('click', async () => {
 
 clearBtn.addEventListener('click', () => {
   state.request?.abort();
+  state.request = null;
   state.download?.abort();
   input.value = '';
   state.lastId = null;
   state.post = null;
-  renderEmpty();
+  state.error = null;
+  if (state.stickerFrom === 'x') state.stickerFrom = state.file ? 'file' : null;
+  renderPanel();
   setHint(DEFAULT_HINT);
   updateClear();
   input.focus();
@@ -511,11 +607,28 @@ result.addEventListener('click', (e) => {
     selectMedia(Number(actionEl.dataset.media));
     return;
   }
-  if (actionEl.dataset.action === 'download') startDownload();
-  if (actionEl.dataset.action === 'retry') search(input.value, { force: true });
+  const action = actionEl.dataset.action;
+  if (action === 'download') startDownload();
+  if (action === 'retry') search(input.value, { force: true });
+  if (action === 'to-sticker') {
+    state.stickerFrom = 'x';
+    setMode('sticker');
+  }
 });
 
+// Início -------------------------------------------------------------------------
+
 renderEmpty();
+
+fetch('/api/health')
+  .then((r) => r.json())
+  .then((h) => {
+    state.features = { sticker: Boolean(h.sticker), stickerMaxUploadMb: h.stickerMaxUploadMb ?? 15 };
+    modeSwitch.hidden = !state.features.sticker;
+    $('#drop-limit').textContent = `GIF, MP4, MOV ou WebM, até ${state.features.stickerMaxUploadMb} MB.`;
+    if (state.mode === 'download' && state.post) renderPanel(); // mostra o atalho de figurinha
+  })
+  .catch(() => {});
 
 // Link recebido por compartilhamento (PWA) ou por ?url= na barra de endereço.
 const params = new URLSearchParams(location.search);

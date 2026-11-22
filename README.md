@@ -1,8 +1,10 @@
 # XDauLou
 
-**Baixe vídeos e GIFs de posts do X (Twitter) colando o link.** Uma tela só, sem login, sem anúncios e sem histórico.
+**Baixe vídeos e GIFs de posts do X (Twitter) colando o link, ou transforme-os em figurinhas animadas do WhatsApp.** Uma tela só, sem login, sem anúncios e sem histórico.
 
 ![XDauLou no desktop, tema claro](docs/desktop-claro.png)
+
+![Estúdio de figurinhas do WhatsApp](docs/figurinha.png)
 
 <p align="center">
   <img src="docs/desktop-escuro.png" alt="XDauLou no desktop, tema escuro, com um GIF" width="68%">
@@ -23,7 +25,22 @@
 - **Posts com vários vídeos.** Seletor de mídia; links `/video/2` já abrem a segunda.
 - **Post citado.** Se o post só cita outro post com vídeo, oferece o vídeo citado.
 - **Mobile-first, tema claro e escuro** seguindo o sistema operacional.
+- **Figurinhas do WhatsApp.** No modo *Criar figurinha*, a mídia de um post (ou um GIF/vídeo seu) vira WebP animado 512×512 com fundo transparente, até 10 s e abaixo de 500 KB. Veja [Figurinhas](#figurinhas-do-whatsapp).
 - **Compartilhar direto para o app** (Android, quando instalado como PWA) ou abrir `/?url=<link>`.
+
+## Figurinhas do WhatsApp
+
+Escolha **Criar figurinha** no card da esquerda (ou toque em *Transformar em figurinha* depois de buscar um post). A origem pode ser a mídia do post ou um arquivo seu (GIF, MP4, MOV ou WebM, até 15 MB).
+
+| Opção | O que faz |
+|---|---|
+| Enquadramento | **Ajustar** mostra a imagem inteira e deixa a sobra transparente; **Preencher** ocupa o quadrado cortando as bordas |
+| Trecho | Começo e duração (até 10 s). O WhatsApp encerra a animação no primeiro quadro, então vale escolher um começo que funcione como imagem |
+| Remover fundo sólido | Torna transparente a cor do canto da imagem, com tolerância ajustável |
+
+O resultado segue as regras do WhatsApp para figurinhas animadas: WebP 512×512, transparência real (nunca borda branca), loop infinito, até 10 s e no máximo 500 KB. Se o primeiro resultado passar do limite, o servidor comprime sozinho, nesta ordem: reduz a qualidade (de 80 até 30), depois os quadros por segundo (15 → 12 → 10 → 8) e por fim a escala dentro da tela de 512 px. Um conteúdo parado (todos os quadros iguais) vira figurinha estática, que tem limite de 100 KB, e o servidor também respeita isso.
+
+Para usar: no WhatsApp Web, abra uma conversa (pode ser com você mesmo), clique no clipe › **Figurinha** e escolha o `.webp`. No celular, toque na figurinha recebida e favorite.
 
 ## Privacidade
 
@@ -37,6 +54,7 @@
 - **Sem proxy aberto.** O servidor só baixa de `https://video.twimg.com` e `https://pbs.twimg.com`, e só com links que ele mesmo assinou (HMAC-SHA256) ao responder `/api/extract`. Os links expiram em 2 horas, o que também impede outros sites de embutirem downloads apontando para o seu servidor.
 - **Redirecionamentos validados a cada salto**, antes de o servidor segui-los (proteção contra SSRF).
 - **Rate limit por IP**, com IPv6 agrupado por /64 para não ser contornado trocando de endereço.
+- **Arquivos enviados verificados pelo conteúdo** (não pela extensão), com o ffmpeg restrito a ler arquivos locais (`-protocol_whitelist file`).
 - **Conversão em GIF limitada:** tamanho de entrada e de saída, duração, conversões simultâneas e tempo máximo. Se o usuário fechar a página, o ffmpeg é encerrado na hora.
 - **Cabeçalhos rígidos:** Content-Security-Policy sem scripts nem estilos inline, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` e `nosniff`. Miniaturas só são servidas se forem JPEG, PNG, WebP ou GIF.
 - **Nomes de arquivo higienizados** no `Content-Disposition` e todo texto vindo do X escapado antes de ir para a página.
@@ -52,13 +70,14 @@ navegador ── POST /api/extract ──▶ servidor ──▶ cdn.syndication.
 navegador ── GET /api/download ──▶ servidor ── stream ──▶ video.twimg.com    (Content-Disposition: attachment)
 navegador ── GET /api/gif ───────▶ servidor ── ffmpeg ──▶ .gif real
 navegador ── GET /api/thumb ─────▶ servidor ──────────▶ pbs.twimg.com
+navegador ── POST /api/sticker ──▶ servidor ── ffmpeg (libwebp) ──▶ figurinha .webp
 ```
 
 O proxy só aceita `https` nos hosts do X (`video.twimg.com`, `pbs.twimg.com`), então não pode ser usado como proxy aberto.
 
 ## Começando
 
-Requisitos: **Node.js 22.9+** e, para GIFs, **ffmpeg** (o pacote `ffmpeg-static` é instalado junto; se não funcionar no seu sistema, use `brew install ffmpeg` ou `apt install ffmpeg`).
+Requisitos: **Node.js 22.9+** e, para GIFs e figurinhas, **ffmpeg** com suporte a WebP (`libwebp`). O pacote `ffmpeg-static` é instalado junto; se não funcionar no seu sistema, use `brew install ffmpeg` ou `apt install ffmpeg`. Ao iniciar, o servidor informa se GIF e figurinhas estão ativados.
 
 ```bash
 git clone https://github.com/franklinarauj/XDauLou.git
@@ -93,7 +112,10 @@ Copie `.env.example` para `.env`. Todas as variáveis são opcionais.
 | `GIF_MAX_DURATION_SECONDS` | `60` | Vídeos mais longos não oferecem GIF |
 | `GIF_MAX_INPUT_MB` | `80` | Tamanho máximo do MP4 a converter |
 | `GIF_MAX_OUTPUT_MB` | `40` | Tamanho máximo do GIF gerado |
-| `GIF_MAX_CONCURRENT` | `2` | Conversões simultâneas |
+| `MAX_CONCURRENT_JOBS` | `2` | Conversões simultâneas (GIF e figurinha somados) |
+| `STICKER_MAX_UPLOAD_MB` | `15` | Tamanho máximo do arquivo enviado para virar figurinha |
+| `STICKER_TARGET_KB` | `480` | Meta de tamanho da figurinha (o limite do WhatsApp é 500) |
+| `RATE_LIMIT_STICKER` | `10` | Figurinhas por IP por janela |
 | `FFMPEG_PATH` / `YTDLP_PATH` | automático | Caminho dos binários, se não estiverem no PATH |
 
 ## API
@@ -104,6 +126,7 @@ Copie `.env.example` para `.env`. Todas as variáveis são opcionais.
 | `GET /api/download` | `src`, `exp`, `sig` (da variante), `name` | MP4 como anexo |
 | `GET /api/gif` | `src`, `exp`, `sig`, `q` (`sd` = 480 px, `hd` = 720 px), `name` | GIF como anexo |
 | `GET /api/thumb` | caminho assinado já devolvido em `thumbnail` e `avatar` | Imagem |
+| `POST /api/sticker` | Corpo: `{ src, exp, sig }` (mídia do X) **ou** o arquivo bruto. Query: `fit` (`contain`/`cover`), `start`, `duration`, `removeBg`, `tolerance`, `name` | Figurinha `.webp`, com `X-Sticker-Fps`, `X-Sticker-Quality` e `X-Sticker-Animated` |
 | `GET /api/health` | | Estado do cache, extratores e ffmpeg |
 
 Erros sempre vêm como `{ "error": { "code", "message" } }`, com mensagens em português (`PRIVATE`, `NOT_FOUND`, `NO_MEDIA`, `RATE_LIMITED`…).
@@ -112,13 +135,17 @@ Erros sempre vêm como `{ "error": { "code", "message" } }`, com mensagens em po
 
 ```
 public/                 interface (HTML, CSS e JS puros, sem build)
+  js/app.js             busca, download e troca de modo
+  js/studio.js          estúdio de figurinhas
   js/tweet-url.js       parser de links, usado também pelo servidor
 server/
   app.js                rotas, cabeçalhos de segurança e tratamento de erros
   extractors/           syndication (principal), yt-dlp (alternativo) e cache
   proxy.js              stream de download e miniaturas
   signer.js             assinatura dos links de mídia
-  gif.js                conversão com ffmpeg
+  gif.js                conversão em GIF
+  sticker.js            figurinhas do WhatsApp e compressão automática
+  ffmpeg.js             execução do ffmpeg, fila e arquivos temporários
   stores.js             cache e contadores (memória ou Redis)
   rate-limit.js         limite por IP
 test/                   testes (node:test) e o X simulado
@@ -131,7 +158,7 @@ scripts/demo.js         modo demonstração
 npm test
 ```
 
-São 38 testes cobrindo o parser de links, a normalização das respostas do X (vídeo, GIF, conta privada, conteúdo sensível, só fotos, post citado), o cache, o rate limit, os links assinados, os redirecionamentos e a conversão real de MP4 em GIF. Eles rodam automaticamente no GitHub Actions a cada push.
+São 49 testes cobrindo o parser de links, a normalização das respostas do X (vídeo, GIF, conta privada, conteúdo sensível, só fotos, post citado), o cache, o rate limit, os links assinados, os redirecionamentos, a conversão real de MP4 em GIF e as figurinhas (512×512, transparência nas bordas, remoção de fundo, menos de 500 KB num vídeo pesado, corte em 10 s, figurinha estática abaixo de 100 KB e rejeição de arquivos falsos). Eles rodam automaticamente no GitHub Actions a cada push.
 
 ## Publicação
 

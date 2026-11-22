@@ -21,8 +21,13 @@
         <section class="panel panel--input" aria-label="Link do post">
           <header class="masthead">
             <h1 class="wordmark">XDauLou</h1>
-            <p class="lede">Cole o link de um post do X e baixe o vídeo ou o GIF.</p>
+            <p class="lede" id="lede">Cole o link de um post do X e baixe o vídeo ou o GIF.</p>
           </header>
+
+          <div class="segmented mode" id="mode" role="radiogroup" aria-label="O que você quer fazer" hidden>
+            <label><input type="radio" name="mode" value="download" checked />Baixar mídia</label>
+            <label><input type="radio" name="mode" value="sticker" />Criar figurinha</label>
+          </div>
 
           <form class="search" id="search" novalidate>
             <label for="url" class="visually-hidden">Link do post</label>
@@ -49,6 +54,20 @@
             </div>
             <p id="hint" class="hint" aria-live="polite">No app do X, toque em Compartilhar e depois em Copiar link.</p>
           </form>
+
+          <div class="dropzone" id="dropzone" hidden>
+            <p class="dropzone-or">ou use um arquivo seu</p>
+            <label class="dropzone-box" for="file">
+              <strong id="drop-label">Escolha ou arraste um GIF ou vídeo</strong>
+              <span id="drop-limit">GIF, MP4, MOV ou WebM, até 15 MB.</span>
+            </label>
+            <input
+              type="file"
+              id="file"
+              class="visually-hidden"
+              accept="image/gif,video/mp4,video/quicktime,video/webm,.gif,.mp4,.mov,.webm,.m4v"
+            />
+          </div>
 
           <footer class="footer">
             <p>Sem login e sem histórico: nada do que você busca fica salvo.</p>

@@ -6,8 +6,13 @@ import { loadConfig } from '../server/config.js';
 import { createExtractorService } from '../server/extractors/index.js';
 import { createSyndicationExtractor } from '../server/extractors/syndication.js';
 import { createGifService } from '../server/gif.js';
+import { createStickerService } from '../server/sticker.js';
 import { MemoryStore } from '../server/stores.js';
 import { createFakeX, IDS, makeSampleMedia } from './fake-x.js';
+
+// Estes testes não cobrem figurinhas (veja sticker.test.js).
+const noStickers = (config) =>
+  createStickerService({ ffmpegPath: null, webpSupported: false, fetchImpl: fetch, timeoutMs: 1000, sticker: config.sticker });
 
 let server;
 let base;
@@ -30,7 +35,7 @@ before(async () => {
     fetchImpl: fake.fetchImpl,
   });
   const gifService = createGifService({ ffmpegPath, fetchImpl: fake.fetchImpl, timeoutMs: 2000, gif: config.gif });
-  const app = createApp({ config, store, extractorService, gifService, fetchImpl: fake.fetchImpl });
+  const app = createApp({ config, store, extractorService, gifService, stickerService: noStickers(config), fetchImpl: fake.fetchImpl });
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
@@ -178,7 +183,7 @@ test('rate limit por IP', async () => {
     fetchImpl: fake.fetchImpl,
   });
   const gifService = createGifService({ ffmpegPath: null, fetchImpl: fake.fetchImpl, timeoutMs: 2000, gif: config.gif });
-  const app = createApp({ config, store: local, extractorService: svc, gifService, fetchImpl: fake.fetchImpl });
+  const app = createApp({ config, store: local, extractorService: svc, gifService, stickerService: noStickers(config), fetchImpl: fake.fetchImpl });
   const srv = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
@@ -209,7 +214,7 @@ test('link assinado expira', async () => {
     fetchImpl: fake.fetchImpl,
   });
   const gifService = createGifService({ ffmpegPath: null, fetchImpl: fake.fetchImpl, timeoutMs: 2000, gif: config.gif });
-  const app = createApp({ config, store: local, extractorService: svc, gifService, fetchImpl: fake.fetchImpl });
+  const app = createApp({ config, store: local, extractorService: svc, gifService, stickerService: noStickers(config), fetchImpl: fake.fetchImpl });
   const srv = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });

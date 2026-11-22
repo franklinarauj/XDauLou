@@ -34,7 +34,10 @@
   --accent-soft: rgb(59 59 245 / 0.12);
   --accent-strong: rgb(59 59 245 / 0.26);
   --danger: #c4122f;
+  --ok: #0b7a43;
   --frame: #0f1419;
+  --check-a: #ffffff;
+  --check-b: #e3e8ee;
 
   --display: 'Bricolage', ui-sans-serif, system-ui, sans-serif;
   --body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -59,7 +62,10 @@
     --accent-soft: rgb(143 143 255 / 0.14);
     --accent-strong: rgb(143 143 255 / 0.3);
     --danger: #ff6b81;
+    --ok: #4ade80;
     --frame: #000000;
+    --check-a: #2a3a4a;
+    --check-b: #22303d;
   }
 }
 
@@ -770,6 +776,215 @@ img.is-broken {
 
 .footer p {
   margin: 0.25rem 0;
+}
+
+/* Modo e envio de arquivo (card da esquerda) */
+
+.mode {
+  margin-top: -0.5rem;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: -0.5rem;
+}
+
+.dropzone-or {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.dropzone-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.25rem 1rem;
+  border: 2px dashed var(--line);
+  border-radius: var(--r-field);
+  background: var(--ground);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.dropzone-box:hover,
+.dropzone.is-dragging .dropzone-box {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dropzone:has(input:focus-visible) .dropzone-box {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dropzone-box strong {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.dropzone.has-file .dropzone-box strong {
+  color: var(--accent);
+}
+
+.dropzone-box span {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+/* Estúdio de figurinha (card da direita) */
+
+.empty-sticker {
+  width: 8rem;
+  height: 8rem;
+}
+
+.sticker-stage {
+  position: relative;
+  width: 240px;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  overflow: hidden;
+  /* Quadriculado: mostra que a sobra é transparente, sem borda branca */
+  background-color: var(--check-a);
+  background-image: conic-gradient(var(--check-b) 25%, transparent 0 50%, var(--check-b) 0 75%, transparent 0);
+  background-size: 20px 20px;
+  border: 1px solid var(--line);
+}
+
+.sticker-stage img,
+.sticker-stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: opacity 0.2s ease;
+}
+
+.sticker-stage.is-stale img,
+.sticker-stage.is-stale video {
+  opacity: 0.45;
+}
+
+.sticker-stage.is-busy::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(90deg, transparent, var(--accent-strong), transparent);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+
+.badge--stage {
+  left: 0.5rem;
+}
+
+.file-line {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.file-line strong {
+  overflow-wrap: anywhere;
+}
+
+.file-line span {
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.sticker-size {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.75rem;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.sticker-size.is-ok {
+  color: var(--ok);
+}
+
+.sticker-size.is-bad {
+  color: var(--danger);
+}
+
+#st-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.group .note {
+  margin-top: 0.5rem;
+}
+
+.range {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.range + .range {
+  margin-top: 0.75rem;
+}
+
+.range-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9375rem;
+}
+
+.range-head output {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.range input[type='range'] {
+  width: 100%;
+  margin: 0.25rem 0;
+  accent-color: var(--accent);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2.75rem;
+  cursor: pointer;
+}
+
+.check input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.check + .range {
+  margin-top: 0.25rem;
+}
+
+.inline-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.9375rem;
+}
+
+.secondary--wide {
+  align-self: stretch;
+  width: 100%;
+  min-height: 3rem;
+}
+
+.howto {
+  margin-top: -0.25rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

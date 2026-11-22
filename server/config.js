@@ -31,9 +31,18 @@ export function loadConfig(overrides = {}) {
       extract: int('RATE_LIMIT_EXTRACT', 30),
       download: int('RATE_LIMIT_DOWNLOAD', 30),
       gif: int('RATE_LIMIT_GIF', 6),
+      sticker: int('RATE_LIMIT_STICKER', 10),
     },
     ffmpegPath: process.env.FFMPEG_PATH || '',
     ytdlpPath: process.env.YTDLP_PATH || '',
+    // Conversões simultâneas (GIF + figurinha somados).
+    maxConcurrentJobs: int('MAX_CONCURRENT_JOBS', int('GIF_MAX_CONCURRENT', 2)),
+    sticker: {
+      targetKb: Math.min(int('STICKER_TARGET_KB', 480), 500),
+      maxInputMb: int('STICKER_MAX_INPUT_MB', 80),
+      maxUploadMb: int('STICKER_MAX_UPLOAD_MB', 15),
+      timeoutMs: int('STICKER_TIMEOUT_MS', 60_000),
+    },
     gif: {
       maxDurationSeconds: int('GIF_MAX_DURATION_SECONDS', 60),
       maxInputMb: int('GIF_MAX_INPUT_MB', 80),

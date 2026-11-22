@@ -40,10 +40,11 @@ function securityHeaders(_req, res, next) {
  *   store: import('./stores.js').MemoryStore,
  *   extractorService: ReturnType<import('./extractors/index.js').createExtractorService>,
  *   gifService: ReturnType<import('./gif.js').createGifService>,
+ *   stickerService: ReturnType<import('./sticker.js').createStickerService>,
  *   fetchImpl: typeof fetch,
  * }} deps
  */
-export function createApp({ config, store, extractorService, gifService, fetchImpl }) {
+export function createApp({ config, store, extractorService, gifService, stickerService, fetchImpl }) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
@@ -67,6 +68,8 @@ export function createApp({ config, store, extractorService, gifService, fetchIm
       cache: store.kind,
       extractors: extractorService.names,
       gif: gifService.available,
+      sticker: stickerService.available,
+      stickerMaxUploadMb: config.sticker.maxUploadMb,
     });
   });
 
@@ -92,11 +95,21 @@ export function createApp({ config, store, extractorService, gifService, fetchIm
       selectedIndex:
         target.mediaIndex !== null && target.mediaIndex < post.media.length ? target.mediaIndex : 0,
       gif: { available: gifService.available, maxDurationSeconds: gifService.maxDurationSeconds },
+      sticker: { available: stickerService.available },
     });
   });
 
   app.get('/api/download', limit('download'), requireSignature, downloadHandler({ fetchImpl, timeoutMs: config.upstreamTimeoutMs }));
   app.get('/api/gif', limit('gif'), requireSignature, gifService.handler());
+  // Figurinha: JSON com o link assinado de um post do X, ou o arquivo enviado no corpo.
+  app.post(
+    '/api/sticker',
+    limit('sticker'),
+    express.json({ limit: '4kb' }),
+    express.raw({ type: (req) => !req.is('application/json'), limit: `${config.sticker.maxUploadMb}mb` }),
+    stickerService.handler({ verify: (src, exp, sig) => signer.verify(src, exp, sig) }),
+  );
+
   app.get('/api/thumb', requireSignature, thumbHandler({ fetchImpl, timeoutMs: config.upstreamTimeoutMs }));
 
   app.use('/api', () => {
@@ -115,16 +128,18 @@ export function createApp({ config, store, extractorService, gifService, fetchIm
 
   // Tratamento de erros: responde JSON amigável. Não registra URLs, IPs nem parâmetros.
   // eslint-disable-next-line no-unused-vars
-  app.use((err, _req, res, _next) => {
+  app.use((err, req, res, _next) => {
     let appErr = err;
     if (!(err instanceof AppError)) {
-      if (err?.type === 'entity.parse.failed' || err?.type === 'entity.too.large') {
+      if (err?.type === 'entity.too.large' && req.path === '/api/sticker') {
+        appErr = new AppError('UPLOAD_TOO_LARGE');
+      } else if (err?.type === 'entity.parse.failed' || err?.type === 'entity.too.large') {
         appErr = new AppError('INVALID_URL');
       } else {
         console.error('[xdaulou] erro interno:', err?.name ?? 'Error', err?.message ?? '');
         appErr = new AppError('INTERNAL');
       }
-    } else if (appErr.code === 'INTERNAL' || appErr.code === 'GIF_FAILED') {
+    } else if (['INTERNAL', 'GIF_FAILED', 'STICKER_FAILED'].includes(appErr.code)) {
       console.error(`[xdaulou] ${appErr.code}:`, appErr.cause?.message?.split('\n')[0] ?? '');
     }
     if (res.headersSent) {

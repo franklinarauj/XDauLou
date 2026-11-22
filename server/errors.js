@@ -17,6 +17,11 @@ export const ERRORS = {
   GIF_BUSY: [503, 'Há muitas conversões em andamento. Tente de novo em alguns segundos.'],
   GIF_UNAVAILABLE: [501, 'A conversão para GIF não está disponível neste servidor.'],
   GIF_FAILED: [500, 'Não foi possível converter este vídeo em GIF. Baixe em MP4.'],
+  STICKER_UNAVAILABLE: [501, 'A criação de figurinhas não está disponível neste servidor (o ffmpeg precisa ter suporte a WebP).'],
+  STICKER_TOO_LARGE: [422, 'Não deu para deixar a figurinha abaixo de 500 KB. Escolha um trecho mais curto.'],
+  STICKER_FAILED: [500, 'Não foi possível criar a figurinha com este arquivo. Tente outro trecho ou outro arquivo.'],
+  UPLOAD_INVALID: [415, 'Envie um GIF ou um vídeo MP4, MOV ou WebM.'],
+  UPLOAD_TOO_LARGE: [413, 'O arquivo passa do limite de envio. Use um arquivo menor.'],
   NOT_FOUND_ROUTE: [404, 'Página não encontrada.'],
   INTERNAL: [500, 'Algo deu errado do nosso lado. Tente de novo.'],
 };
