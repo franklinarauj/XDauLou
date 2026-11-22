@@ -1,0 +1,37 @@
+{
+  "name": "xdaulou",
+  "version": "1.0.0",
+  "description": "Baixe vídeos e GIFs de posts do X (Twitter) com fricção zero.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/franklinarauj/XDauLou.git"
+  },
+  "homepage": "https://github.com/franklinarauj/XDauLou#readme",
+  "keywords": [
+    "twitter",
+    "x",
+    "video-downloader",
+    "gif",
+    "ffmpeg",
+    "express"
+  ],
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "dev": "node --env-file-if-exists=.env --watch server/index.js",
+    "demo": "node scripts/demo.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "optionalDependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "ioredis": "^5.4.2"
+  },
+  "license": "MIT"
+}

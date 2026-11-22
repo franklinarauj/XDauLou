@@ -1,0 +1,16 @@
+{
+  "name": "XDauLou",
+  "short_name": "XDauLou",
+  "description": "Baixe vídeos e GIFs de posts do X.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#15202B",
+  "theme_color": "#3B3BF5",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
+}

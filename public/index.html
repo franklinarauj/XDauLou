@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>XDauLou: baixe vídeos e GIFs de posts do X</title>
+    <meta name="description" content="Cole o link de um post do X e baixe o vídeo ou o GIF. Sem login e sem histórico." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#E9EDF2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#15202B" media="(prefers-color-scheme: dark)" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preload" href="/fonts/bricolage-grotesque-latin-standard-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/css/styles.css" />
+    <script type="module" src="/js/app.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <div class="layout">
+        <section class="panel panel--input" aria-label="Link do post">
+          <header class="masthead">
+            <h1 class="wordmark">XDauLou</h1>
+            <p class="lede">Cole o link de um post do X e baixe o vídeo ou o GIF.</p>
+          </header>
+
+          <form class="search" id="search" novalidate>
+            <label for="url" class="visually-hidden">Link do post</label>
+            <div class="field">
+              <input
+                id="url"
+                name="url"
+                type="text"
+                inputmode="url"
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                enterkeyhint="go"
+                placeholder="https://x.com/usuario/status/…"
+                aria-describedby="hint"
+              />
+              <button type="button" id="clear" class="field-btn field-btn--icon" aria-label="Limpar" hidden>
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                </svg>
+              </button>
+              <button type="button" id="paste" class="field-btn">Colar</button>
+            </div>
+            <p id="hint" class="hint" aria-live="polite">No app do X, toque em Compartilhar e depois em Copiar link.</p>
+          </form>
+
+          <footer class="footer">
+            <p>Sem login e sem histórico: nada do que você busca fica salvo.</p>
+            <p>Baixe apenas o que você tem direito de usar. O XDauLou não tem relação com o X Corp.</p>
+          </footer>
+        </section>
+
+        <section
+          id="result"
+          class="panel panel--output"
+          aria-label="Pré-visualização e download"
+          aria-live="polite"
+          aria-busy="false"
+        ></section>
+      </div>
+    </main>
+  </body>
+</html>
